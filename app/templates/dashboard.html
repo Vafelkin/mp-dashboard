@@ -7,63 +7,81 @@
   <div class="text-muted small">Обновлено: {{ now.strftime('%Y-%m-%d %H:%M:%S') }}</div>
   </div>
 
-<div class="row g-3">
-  <!-- Остатки WB -->
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card h-100" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ stocks_wb.tooltip }}">
-      <div class="card-body text-center">
-        <h6 class="card-subtitle text-muted mb-2">Остатки на складах WB</h6>
-        <div class="display-5 fw-bold">{{ stocks_wb.total }}</div>
+<div class="row g-4">
+  <!-- Левая колонка: Wildberries -->
+  <div class="col-12 col-lg-6">
+    <div class="text-center mb-2"><h5 class="mb-0">Wildberries</h5></div>
+    <div class="vstack gap-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted mb-2">Остатки на складах</div>
+          <div class="display-5 fw-bold">{{ stocks_wb.total }}</div>
+          {% if stocks_wb.sku_lines %}
+          <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
+            {% for line in stocks_wb.sku_lines %}
+            {% set sku_name = line.split(':')[0] %}
+            {% set tip_raw = (stocks_wb.sku_tooltips.get(sku_name) if stocks_wb.sku_tooltips else '') %}
+            {% set tip_html = tip_raw and tip_raw.replace('\n', '<br/>') %}
+            <li {% if tip_html %}data-bs-toggle="tooltip" data-bs-placement="right" title="{{ tip_html | safe }}"{% endif %}>{{ line }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted mb-2">Заказано сегодня</div>
+          <div class="display-5 fw-bold">{{ wb_today.ordered }}</div>
+          {% if wb_ordered_skus_lines %}
+          <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
+            {% for line in wb_ordered_skus_lines %}
+            <li>{{ line }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted mb-2">Выкуплено сегодня</div>
+          <div class="display-5 fw-bold">{{ wb_today.purchased }}</div>
+          {% if wb_purchased_skus_lines %}
+          <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
+            {% for line in wb_purchased_skus_lines %}
+            <li>{{ line }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Остатки OZON -->
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card h-100" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ stocks_ozon.tooltip }}">
-      <div class="card-body text-center">
-        <h6 class="card-subtitle text-muted mb-2">Остатки на складах OZON</h6>
-        <div class="display-5 fw-bold">{{ stocks_ozon.total }}</div>
+  <!-- Правая колонка: Ozon -->
+  <div class="col-12 col-lg-6">
+    <div class="text-center mb-2"><h5 class="mb-0">Ozon</h5></div>
+    <div class="vstack gap-3">
+      <div class="card" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ stocks_ozon.tooltip }}">
+        <div class="card-body text-center">
+          <div class="text-muted mb-2">Остатки на складах</div>
+          <div class="display-5 fw-bold">{{ stocks_ozon.total }}</div>
+        </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Заказано сегодня WB -->
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card h-100">
-      <div class="card-body text-center">
-        <h6 class="card-subtitle text-muted mb-2">Заказано сегодня на WB</h6>
-        <div class="display-5 fw-bold">{{ wb_today.ordered }}</div>
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted mb-2">Заказано сегодня</div>
+          <div class="display-5 fw-bold">{{ ozon_today.ordered }}</div>
+        </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Выкуплено сегодня WB -->
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card h-100">
-      <div class="card-body text-center">
-        <h6 class="card-subtitle text-muted mb-2">Выкуплено сегодня на WB</h6>
-        <div class="display-5 fw-bold">{{ wb_today.purchased }}</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Заказано сегодня OZON -->
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card h-100">
-      <div class="card-body text-center">
-        <h6 class="card-subtitle text-muted mb-2">Заказано сегодня на Ozon</h6>
-        <div class="display-5 fw-bold">{{ ozon_today.ordered }}</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Выкуплено сегодня OZON -->
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card h-100">
-      <div class="card-body text-center">
-        <h6 class="card-subtitle text-muted mb-2">Выкуплено сегодня на Ozon</h6>
-        <div class="display-5 fw-bold">{{ ozon_today.purchased }}</div>
+      <div class="card">
+        <div class="card-body text-center">
+          <div class="text-muted mb-2">Выкуплено сегодня</div>
+          <div class="display-5 fw-bold">{{ ozon_today.purchased }}</div>
+        </div>
       </div>
     </div>
   </div>

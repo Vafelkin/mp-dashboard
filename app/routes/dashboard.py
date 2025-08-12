@@ -32,16 +32,67 @@ def dashboard_index():
             return "Детализация недоступна"
         return "\n".join([f"{name}: {qty}" for name, qty in details])
 
+    # Формируем список строк по SKU для WB
+    wb_sku_lines: list[str] = []
+    try:
+        wb_skus = wb_today.get("ordered_skus", [])
+        if wb_skus:
+            for sku, cnt in wb_skus[:8]:
+                wb_sku_lines.append(f"{sku}: {cnt}")
+            if len(wb_skus) > 8:
+                wb_sku_lines.append("…")
+    except Exception:
+        wb_sku_lines = []
+
+    # Список строк по остаткам SKU (WB)
+    wb_stock_sku_lines: list[str] = []
+    try:
+        wb_skus_full = wb_stocks.get("skus", [])
+        if wb_skus_full:
+            for sku, qty in wb_skus_full[:8]:
+                wb_stock_sku_lines.append(f"{sku}: {qty}")
+            if len(wb_skus_full) > 8:
+                wb_stock_sku_lines.append("…")
+    except Exception:
+        wb_stock_sku_lines = []
+
+    # Список строк по выкупленным SKU (WB)
+    wb_purchased_lines: list[str] = []
+    try:
+        wb_purch = wb_today.get("purchased_skus", [])
+        if wb_purch:
+            for sku, cnt in wb_purch[:8]:
+                wb_purchased_lines.append(f"{sku}: {cnt}")
+            if len(wb_purch) > 8:
+                wb_purchased_lines.append("…")
+    except Exception:
+        wb_purchased_lines = []
+
+    # Подготовим карту подсказок по SKU для остатков WB
+    wb_stock_sku_tooltips: dict[str, str] = {}
+    try:
+        details_map = wb_stocks.get("sku_details", {}) or {}
+        for sku, pairs in details_map.items():
+            if not pairs:
+                continue
+            wb_stock_sku_tooltips[sku] = tooltip_text(pairs)
+    except Exception:
+        wb_stock_sku_tooltips = {}
+
     context = {
         "stocks_wb": {
             "total": wb_stocks.get("total", 0),
             "tooltip": tooltip_text(wb_stocks.get("warehouses", [])),
+            "sku_lines": wb_stock_sku_lines,
+            "sku_tooltips": wb_stock_sku_tooltips,
         },
         "stocks_ozon": {
             "total": ozon_stocks.get("total", 0),
             "tooltip": tooltip_text(ozon_stocks.get("warehouses", [])),
         },
         "wb_today": wb_today,
+        "wb_ordered_skus_lines": wb_sku_lines,
+        "wb_purchased_skus_lines": wb_purchased_lines,
         "ozon_today": ozon_today,
         "now": datetime.now(tz),
     }

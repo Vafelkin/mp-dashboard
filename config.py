@@ -20,4 +20,7 @@ class Config:
 
     TIMEZONE = os.environ.get("TIMEZONE", "Europe/Moscow")
 
+    # Кэш для API-запросов (секунды)
+    CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "60"))
+
 
