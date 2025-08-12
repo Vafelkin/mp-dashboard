@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Дашборд — MP Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h3 class="mb-0">Дашборд</h3>
+  <div class="text-muted small">Обновлено: {{ now.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+  </div>
+
+<div class="row g-3">
+  <!-- Остатки WB -->
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card h-100" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ stocks_wb.tooltip }}">
+      <div class="card-body text-center">
+        <h6 class="card-subtitle text-muted mb-2">Остатки на складах WB</h6>
+        <div class="display-5 fw-bold">{{ stocks_wb.total }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Остатки OZON -->
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card h-100" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ stocks_ozon.tooltip }}">
+      <div class="card-body text-center">
+        <h6 class="card-subtitle text-muted mb-2">Остатки на складах OZON</h6>
+        <div class="display-5 fw-bold">{{ stocks_ozon.total }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Заказано сегодня WB -->
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <h6 class="card-subtitle text-muted mb-2">Заказано сегодня на WB</h6>
+        <div class="display-5 fw-bold">{{ wb_today.ordered }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Выкуплено сегодня WB -->
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <h6 class="card-subtitle text-muted mb-2">Выкуплено сегодня на WB</h6>
+        <div class="display-5 fw-bold">{{ wb_today.purchased }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Заказано сегодня OZON -->
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <h6 class="card-subtitle text-muted mb-2">Заказано сегодня на Ozon</h6>
+        <div class="display-5 fw-bold">{{ ozon_today.ordered }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Выкуплено сегодня OZON -->
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <h6 class="card-subtitle text-muted mb-2">Выкуплено сегодня на Ozon</h6>
+        <div class="display-5 fw-bold">{{ ozon_today.purchased }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
