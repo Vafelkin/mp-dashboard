@@ -1,61 +1,77 @@
 {% extends 'base.html' %}
 {% block title %}Дашборд — MP Dashboard{% endblock %}
 
-{% block content %}
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h3 class="mb-0">Дашборд</h3>
-  <div class="text-muted small">Обновлено: {{ now.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+{% macro render_card(title, value, sku_lines, card_id) %}
+<div class="card">
+  <div class="card-body text-center">
+    <div class="text-muted mb-2">{{ title }}</div>
+    {% if value is not defined or value.error %}
+      <div class="text-danger small mt-2">Не удалось загрузить данные</div>
+    {% else %}
+      <div class="display-5 fw-bold">{{ value }}</div>
+      {% if sku_lines %}
+      <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
+        {% for line in sku_lines %}
+        <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    {% endif %}
   </div>
+</div>
+{% endmacro %}
+
+{% macro render_stocks_card(title, stocks_data) %}
+<div class="card">
+  <div class="card-body text-center">
+    <div class="text-muted mb-2">{{ title }}</div>
+    {% if stocks_data.error %}
+      <div class="text-danger small mt-2">Не удалось загрузить данные</div>
+    {% else %}
+      <div class="display-5 fw-bold">
+        {{ stocks_data.total }}
+      </div>
+      {% if stocks_data.sku_items %}
+      <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
+        {% for item in stocks_data.sku_items %}
+        {% set tip_raw = (stocks_data.sku_tooltips.get(item.sku) if stocks_data.sku_tooltips else '') %}
+        {% set tip_html = tip_raw and tip_raw.replace(' ', '&nbsp;').replace('\n', '<br/>') %}
+        <li {% if tip_html %}data-bs-toggle="tooltip" data-bs-placement="right" title="{{ tip_html | safe }}"{% endif %}>
+          {{ item.text }}
+          {% if item.in_transit %}
+            <span class="ms-2">
+              <span class="text-success">↑{{ item.in_transit.to }}</span>
+              <span class="text-danger ms-1">↓{{ item.in_transit.from }}</span>
+            </span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% elif stocks_data.sku_lines %}
+      <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
+        {% for line in stocks_data.sku_lines %}
+        {% set sku_name = line.split(':')[0] %}
+        {% set tip_raw = (stocks_data.sku_tooltips.get(sku_name) if stocks_data.sku_tooltips else '') %}
+        {% set tip_html = tip_raw and tip_raw.replace(' ', '&nbsp;').replace('\n', '<br/>') %}
+        <li {% if tip_html %}data-bs-toggle="tooltip" data-bs-placement="right" title="{{ tip_html | safe }}"{% endif %}>{{ line | safe }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
 
 <div class="row g-4">
   <!-- Левая колонка: Wildberries -->
   <div class="col-12 col-lg-6">
     <div class="text-center mb-2"><h5 class="mb-0">Wildberries</h5></div>
     <div class="vstack gap-3">
-      <div class="card">
-        <div class="card-body text-center">
-          <div class="text-muted mb-2">Остатки на складах</div>
-          <div class="display-5 fw-bold">{{ stocks_wb.total }}</div>
-          {% if stocks_wb.sku_lines %}
-          <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
-            {% for line in stocks_wb.sku_lines %}
-            {% set sku_name = line.split(':')[0] %}
-            {% set tip_raw = (stocks_wb.sku_tooltips.get(sku_name) if stocks_wb.sku_tooltips else '') %}
-            {% set tip_html = tip_raw and tip_raw.replace('\n', '<br/>') %}
-            <li {% if tip_html %}data-bs-toggle="tooltip" data-bs-placement="right" title="{{ tip_html | safe }}"{% endif %}>{{ line }}</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-body text-center">
-          <div class="text-muted mb-2">Заказано сегодня</div>
-          <div class="display-5 fw-bold">{{ wb_today.ordered }}</div>
-          {% if wb_ordered_skus_lines %}
-          <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
-            {% for line in wb_ordered_skus_lines %}
-            <li>{{ line }}</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-body text-center">
-          <div class="text-muted mb-2">Выкуплено сегодня</div>
-          <div class="display-5 fw-bold">{{ wb_today.purchased }}</div>
-          {% if wb_purchased_skus_lines %}
-          <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
-            {% for line in wb_purchased_skus_lines %}
-            <li>{{ line }}</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-        </div>
-      </div>
+      {{ render_stocks_card("Остатки на складах", stocks_wb) }}
+      {{ render_card("Заказано сегодня", wb_today.ordered, wb_ordered_skus_lines) }}
+      {{ render_card("Выкуплено сегодня", wb_today.purchased, wb_purchased_skus_lines) }}
     </div>
   </div>
 
@@ -63,26 +79,10 @@
   <div class="col-12 col-lg-6">
     <div class="text-center mb-2"><h5 class="mb-0">Ozon</h5></div>
     <div class="vstack gap-3">
-      <div class="card" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ stocks_ozon.tooltip }}">
-        <div class="card-body text-center">
-          <div class="text-muted mb-2">Остатки на складах</div>
-          <div class="display-5 fw-bold">{{ stocks_ozon.total }}</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-body text-center">
-          <div class="text-muted mb-2">Заказано сегодня</div>
-          <div class="display-5 fw-bold">{{ ozon_today.ordered }}</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-body text-center">
-          <div class="text-muted mb-2">Выкуплено сегодня</div>
-          <div class="display-5 fw-bold">{{ ozon_today.purchased }}</div>
-        </div>
-      </div>
+      {{ render_stocks_card("Остатки на складах", stocks_ozon) }}
+      {{ render_card("Заказано сегодня", ozon_today.ordered, ozon_ordered_skus_lines) }}
+      {{ render_card("Выкуплено сегодня", ozon_today.purchased, ozon_purchased_skus_lines) }}
+      {{ render_card("Баланс", ozon_balance.balance) }}
     </div>
   </div>
 </div>

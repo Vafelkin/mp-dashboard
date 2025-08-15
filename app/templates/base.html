@@ -8,8 +8,12 @@
   </head>
   <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-      <div class="container">
-        <a class="navbar-brand" href="/">MP Dashboard</a>
+      <div class="container d-flex justify-content-between">
+        <a class="navbar-brand" href="/">Дашборд</a>
+        <a id="forceRefreshBtn" class="btn btn-light btn-sm" href="/?force=1">
+          <span class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true"></span>
+          <span class="label">Обновить принудительно</span>
+        </a>
       </div>
     </nav>
     <main class="container my-4">
@@ -17,6 +21,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="/static/js/app.js"></script>
   </body>
   </html>

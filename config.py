@@ -2,7 +2,9 @@ import os
 from dotenv import load_dotenv
 
 
-load_dotenv()
+# Важно: переопределяем переменные окружения значениями из .env,
+# чтобы сервис systemd с пустыми значениями не "затирал" реальные креды
+load_dotenv(override=True)
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -15,12 +17,30 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     WB_API_TOKEN = os.environ.get("WB_API_TOKEN", "")
-    OZON_CLIENT_ID = os.environ.get("OZON_CLIENT_ID", "")
-    OZON_API_KEY = os.environ.get("OZON_API_KEY", "")
+    
+    # --- Ozon: поддержка нескольких магазинов ---
+    OZON_ACCOUNTS = []
+    i = 1
+    while True:
+        client_id = os.environ.get(f"OZON_CLIENT_ID_{i}")
+        api_key = os.environ.get(f"OZON_API_KEY_{i}")
+        skus_str = os.environ.get(f"OZON_SKUS_{i}", "")
+        
+        if not client_id or not api_key:
+            break
+            
+        skus = [s.strip() for s in skus_str.split(",") if s.strip()]
+        OZON_ACCOUNTS.append({
+            "client_id": client_id,
+            "api_key": api_key,
+            "skus": skus,
+        })
+        i += 1
+    # --- Конец блока Ozon ---
 
     TIMEZONE = os.environ.get("TIMEZONE", "Europe/Moscow")
 
-    # Кэш для API-запросов (секунды)
-    CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "60"))
+    # Кэш для API-запросов (секунды) — 10 минут по умолчанию
+    CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "600"))
 
 

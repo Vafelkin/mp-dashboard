@@ -27,3 +27,12 @@ class DailyMetric(db.Model):
     purchased_count = db.Column(db.Integer, nullable=False, default=0)
 
 
+class KeyValue(db.Model):
+    __tablename__ = "kv_store"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    value_json = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+

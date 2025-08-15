@@ -4,7 +4,12 @@ from collections import defaultdict
 import logging
 import requests
 from functools import lru_cache
-from ..utils.sku_aliases import alias_sku, sort_pairs_by_alias
+from ..utils.cache import get_or_set
+from ..utils.sku_aliases import alias_sku, sort_pairs_by_alias, ALIAS_MAP
+from ..models import db
+from ..models import KeyValue
+from ..schemas import OzonStockResponseItem, OzonPostingResponse, OzonPosting, OzonReturnResponse, OzonCashboxResponse
+from pydantic import ValidationError, parse_obj_as
 
 
 OZON_BASE = "https://api-seller.ozon.ru"
@@ -18,321 +23,305 @@ def _headers(client_id: str, api_key: str) -> dict:
     }
 
 
-@lru_cache(maxsize=8)
-def fetch_stocks(client_id: str, api_key: str) -> dict:
-    """Возвращает сумму остатков и детализацию по складам Ozon (FBO).
+def fetch_stocks(accounts: list[dict], ttl_seconds: int | None = None, force: bool = False) -> dict:
+    """Возвращает сумму остатков и детализацию по складам Ozon (FBO) для нескольких аккаунтов."""
+    
+    def _produce() -> dict:
+        # Итоговые агрегированные данные
+        final_total = 0
+        final_total_in_transit = 0
+        final_total_in_transit_from = 0
+        final_by_warehouse: dict[str, int] = defaultdict(int)
+        final_by_sku: dict[str, int] = defaultdict(int)
+        final_by_sku_warehouses: dict[str, dict[str, int]] = {}
+        final_sku_analytics: dict[str, dict] = {}
 
-    Основной источник: Analytics API — v1/analytics/stocks.
-    Фоллбэки: v3/v2 product info stocks как раньше, если analytics недоступен.
-    """
-    try:
-        # 1) Список складов
-        id_to_name: dict[int, str] = {}
         try:
-            wh_resp = requests.post(
-                f"{OZON_BASE}/v1/warehouse/list",
-                headers=_headers(client_id, api_key),
-                json={},
-                timeout=30,
-            )
-            if wh_resp.ok:
-                warehouses_data = wh_resp.json().get("result", [])
-                for w in warehouses_data:
-                    wid = w.get("warehouse_id") or w.get("warehouseId")
-                    if wid is not None:
-                        try:
-                            id_to_name[int(wid)] = w.get("name") or str(wid)
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+            # Сначала получим все товары в пути К клиенту
+            delivering_postings = []
+            for account in accounts:
+                client_id = account["client_id"]
+                api_key = account["api_key"]
+                start_of_time = datetime(2020, 1, 1).isoformat() + "Z"
+                delivering_postings.extend(_fetch_postings(client_id, api_key, start_of_time, status="delivering"))
 
-        # Попытка 0: Analytics stocks (предпочтительно для FBO)
-        by_warehouse: dict[str, int] = defaultdict(int)
-        by_sku: dict[str, int] = defaultdict(int)
-        by_sku_warehouses: dict[str, dict[str, int]] = {}
-        total = 0
-        try:
-            offset = 0
-            page_size = 1000
-            used_analytics = False
-            while True:
-                a_resp = requests.post(
-                    f"{OZON_BASE}/v1/analytics/stocks",
-                    headers=_headers(client_id, api_key),
-                    json={
-                        "limit": page_size,
-                        "offset": offset,
-                        # фильтры оставляем пустыми для сводки по всем sku FBO
-                    },
-                    timeout=30,
-                )
-                if not a_resp.ok:
-                    break
-                used_analytics = True
-                aj = a_resp.json()
-                rows = (
-                    aj.get("result", {}).get("items")
-                    or aj.get("result", {}).get("rows")
-                    or aj.get("result")
-                    or aj.get("items")
-                    or aj.get("rows")
-                    or []
-                )
-                if not isinstance(rows, list):
-                    break
-                if not rows:
-                    break
-                for r in rows:
-                    wh_id = r.get("warehouse_id") or r.get("warehouseId")
-                    wh_name = id_to_name.get(int(wh_id)) if isinstance(wh_id, int) else None
-                    if not wh_name:
-                        wh_name = str(wh_id) if wh_id is not None else "Неизвестно"
-                    qty = (
-                        r.get("present")
-                        or r.get("quantity")
-                        or r.get("stock")
-                        or r.get("in_stock")
-                        or 0
+            for p in delivering_postings:
+                for prod in p.products:
+                    sku_name = alias_sku(str(prod.offer_id))
+                    final_sku_analytics.setdefault(sku_name, {"ads": 0, "idc": 0, "in_transit": 0, "in_transit_from": 0})
+                    final_sku_analytics[sku_name]["in_transit"] += prod.quantity
+                    final_total_in_transit += prod.quantity
+
+            # Теперь получим все товары в пути ОТ клиента (возвраты)
+            returning_postings = []
+            for account in accounts:
+                client_id = account["client_id"]
+                api_key = account["api_key"]
+                returning_postings.extend(_fetch_returns(client_id, api_key, status="returning"))
+
+            for p in returning_postings:
+                for prod in p.products:
+                    sku_name = alias_sku(str(prod.offer_id))
+                    final_sku_analytics.setdefault(sku_name, {"ads": 0, "idc": 0, "in_transit": 0, "in_transit_from": 0})
+                    final_sku_analytics[sku_name]["in_transit_from"] += prod.quantity
+                    final_total_in_transit_from += prod.quantity
+
+            for account in accounts:
+                client_id = account["client_id"]
+                api_key = account["api_key"]
+                ozon_skus = account["skus"]
+
+                if not ozon_skus:
+                    logging.warning("ozon_skus not provided for account %s, skipping.", client_id)
+                    continue
+
+                try:
+                    sku_ids = [int(s) for s in ozon_skus]
+                except (ValueError, TypeError):
+                    logging.error("Invalid OZON_SKUS format for account %s.", client_id, exc_info=True)
+                    continue
+
+                for i in range(0, len(sku_ids), 100):
+                    chunk = sku_ids[i : i + 100]
+                    a_resp = requests.post(
+                        f"{OZON_BASE}/v1/analytics/stocks",
+                        headers=_headers(client_id, api_key),
+                        json={"skus": chunk},
+                        timeout=30,
                     )
-                    try:
-                        qty_int = int(qty)
-                    except Exception:
-                        qty_int = 0
-                    if qty_int <= 0:
+                    if not a_resp.ok:
+                        logging.error("Ozon analytics/stocks failed for account %s: %s %s", client_id, a_resp.status_code, a_resp.text[:300])
                         continue
-                    by_warehouse[wh_name] += qty_int
-                    total += qty_int
-                    # sku
-                    sku_name = alias_sku(
-                        str(
-                            r.get("offer_id")
-                            or r.get("offerId")
-                            or r.get("sku")
-                            or r.get("product_id")
-                            or "SKU"
-                        )
-                    )
-                    by_sku[sku_name] += qty_int
-                    sku_wh = by_sku_warehouses.setdefault(sku_name, defaultdict(int))
-                    sku_wh[wh_name] += qty_int
 
-                offset += page_size
-                if len(rows) < page_size:
-                    break
-
-            if used_analytics:
-                warehouses = sorted(by_warehouse.items(), key=lambda x: x[0])
-                skus = sort_pairs_by_alias(list(by_sku.items()))
-                sku_details: dict[str, list[tuple[str, int]]] = {}
-                for sku_name, wh_map in by_sku_warehouses.items():
-                    pairs = [(w, q) for w, q in wh_map.items() if q > 0]
-                    pairs.sort(key=lambda x: (-x[1], x[0]))
-                    sku_details[sku_name] = pairs
-                return {"total": total, "warehouses": warehouses, "skus": skus, "sku_details": sku_details}
-        except Exception:
-            # пойдём по фоллбэкам ниже
-            pass
-
-        # 2) Список товаров (все видимые) — для фоллбэков
-        product_ids: list[int] = []
-        offer_ids: list[str] = []
-        last_id = ""
-        while True:
-            resp = requests.post(
-                f"{OZON_BASE}/v2/product/list",
-                headers=_headers(client_id, api_key),
-                json={"filter": {"visibility": "ALL"}, "last_id": last_id, "limit": 1000},
-                timeout=30,
-            )
-            if not resp.ok:
-                break
-            rj = resp.json().get("result", {})
-            items = rj.get("items", [])
-            for it in items:
-                pid = it.get("product_id")
-                if pid is not None:
                     try:
-                        product_ids.append(int(pid))
-                    except Exception:
-                        pass
-                off = it.get("offer_id") or it.get("offerId")
-                if off:
-                    try:
-                        offer_ids.append(str(off))
-                    except Exception:
-                        pass
-            last_id = rj.get("last_id") or ""
-            if not last_id:
-                break
+                        validated_response = parse_obj_as(OzonStockResponseItem, a_resp.json())
+                        rows = validated_response.items
+                    except ValidationError as e:
+                        logging.error("Ozon stocks validation error for account %s: %s", client_id, e)
+                        continue
+                    
+                    for r in rows:
+                        qty = r.available_stock_count
+                        transit_qty = r.transit_stock_count
+                        wh_name = r.warehouse_name or "Неизвестный кластер"
+                        sku_name = alias_sku(str(r.offer_id))
 
-        if not product_ids and not offer_ids:
-            return {"total": 0, "warehouses": []}
+                        final_by_warehouse[wh_name] += qty
+                        final_total += qty
+                        final_by_sku[sku_name] += qty
+                        
+                        sku_wh = final_by_sku_warehouses.setdefault(sku_name, defaultdict(int))
+                        sku_wh[wh_name] += qty
+                        
+                        final_sku_analytics.setdefault(sku_name, {"ads": 0, "idc": 0, "in_transit": 0, "in_transit_from": 0})
+                        final_sku_analytics[sku_name]["ads"] = r.ads
+                        final_sku_analytics[sku_name]["idc"] = r.idc
+                        # Убираем старую логику, так как транзиты уже посчитаны
+                        # final_sku_analytics[sku_name]["in_transit"] += transit_qty
 
-        # 3) Остатки по товарам — агрегируем по складам
-        by_warehouse = defaultdict(int)
-        total = 0
-        chunk_size = 100
-        # приоритет: v3 по product_id
-        used_any = False
-        if product_ids:
-            for i in range(0, len(product_ids), chunk_size):
-                batch = product_ids[i : i + chunk_size]
-                s_resp = requests.post(
-                    f"{OZON_BASE}/v3/product/info/stocks",
-                    headers=_headers(client_id, api_key),
-                    json={"product_id": batch, "limit": len(batch)},
-                    timeout=30,
-                )
-                if not s_resp.ok:
-                    break
-                used_any = True
-                s_res = s_resp.json().get("result") or []
-                for item in s_res:
-                    for s in item.get("stocks") or []:
-                        wh_id = s.get("warehouse_id") or s.get("warehouseId")
-                        wh_name = None
-                        try:
-                            wh_name = id_to_name.get(int(wh_id)) if wh_id is not None else None
-                        except Exception:
-                            pass
-                        if not wh_name:
-                            wh_name = str(wh_id) if wh_id is not None else "Неизвестно"
-                        qty = s.get("present") or s.get("quantity") or 0
-                        try:
-                            qty_int = int(qty)
-                        except Exception:
-                            qty_int = 0
-                        by_warehouse[wh_name] += qty_int
-                        total += qty_int
+            warehouses = sorted(final_by_warehouse.items(), key=lambda x: x[0])
+            skus = sort_pairs_by_alias(list(final_by_sku.items()))
+            
+            sku_details: dict[str, list[tuple[str, int]]] = {}
+            for sku_name, wh_map in final_by_sku_warehouses.items():
+                pairs = [(w, q) for w, q in wh_map.items() if q > 0]
+                pairs.sort(key=lambda x: (-x[1], x[0]))
+                sku_details[sku_name] = pairs
+            
+            return {
+                "total": final_total,
+                "warehouses": warehouses,
+                "skus": skus,
+                "sku_details": sku_details,
+                "total_in_transit": final_total_in_transit,
+                "total_in_transit_from": final_total_in_transit_from,
+                "sku_analytics": final_sku_analytics
+            }
+        except Exception as exc:
+            logging.exception("Ozon fetch_stocks failed: %s", exc)
+            raise
 
-        # фоллбэк: v2 по offer_id
-        if not used_any and offer_ids:
-            for i in range(0, len(offer_ids), 100):
-                batch = offer_ids[i : i + 100]
-                s_resp = requests.post(
-                    f"{OZON_BASE}/v2/product/info/stocks",
-                    headers=_headers(client_id, api_key),
-                    json={"offer_id": batch, "limit": len(batch)},
-                    timeout=30,
-                )
-                if not s_resp.ok:
-                    break
-                res = s_resp.json().get("result") or {}
-                items = res.get("items") or res.get("products") or []
-                for item in items:
-                    for s in item.get("stocks") or []:
-                        wh_id = s.get("warehouse_id") or s.get("warehouseId")
-                        wh_name = None
-                        try:
-                            wh_name = id_to_name.get(int(wh_id)) if wh_id is not None else None
-                        except Exception:
-                            pass
-                        if not wh_name:
-                            wh_name = str(wh_id) if wh_id is not None else "Неизвестно"
-                        qty = s.get("present") or s.get("quantity") or 0
-                        try:
-                            qty_int = int(qty)
-                        except Exception:
-                            qty_int = 0
-                        by_warehouse[wh_name] += qty_int
-                        total += qty_int
-
-        warehouses = sorted(by_warehouse.items(), key=lambda x: x[0])
-        return {"total": total, "warehouses": warehouses}
-    except Exception as exc:
-        logging.exception("Ozon fetch_stocks failed: %s", exc)
-        return {"total": 0, "warehouses": []}
+    cache_key = f"ozon_stocks_multi"
+    return get_or_set(cache_key, ttl_seconds, _produce, force=force)
 
 
-@lru_cache(maxsize=32)
-def fetch_today_metrics(client_id: str, api_key: str, tz: ZoneInfo) -> dict:
-    """Возвращает количество заказов и выкупов за сегодня по Ozon (FBO).
+def _fetch_postings(client_id: str, api_key: str, start_time_iso: str, status: str = "") -> list:
+    """Внутренняя функция для получения постингов с Ozon API."""
+    
+    # Для статуса 'delivering' нам нужен широкий диапазон дат
+    if status == "delivering":
+        since = datetime(datetime.now().year - 1, 1, 1).isoformat() + "Z"
+        to = datetime.now().isoformat() + "Z"
+    else:
+        since = start_time_iso
+        to = datetime.now().isoformat() + "Z"
 
-    Используем /v3/posting/fbo/list: без статуса — все с начала дня; со статусом delivered — выкуплено.
-    """
+    payload = {
+        "dir": "asc",
+        "filter": {
+            "since": since,
+            "to": to,
+        },
+        "limit": 1000,
+        "offset": 0,
+    }
+    if status:
+        payload["filter"]["status"] = status
+
+    # Пробуем v3, если 404 - фоллбэк на v2
     try:
-        start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        resp = requests.post(f"{OZON_BASE}/v3/posting/fbo/list", headers=_headers(client_id, api_key), json=payload, timeout=30)
+        if resp.status_code == 404:
+            resp = requests.post(f"{OZON_BASE}/v2/posting/fbo/list", headers=_headers(client_id, api_key), json=payload, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        logging.error("Ozon API request for postings failed: %s", e)
+        raise
 
-        orders_resp = requests.post(
-            f"{OZON_BASE}/v3/posting/fbo/list",
+    rj = resp.json()
+    if isinstance(rj, list):
+        return rj
+    
+    res = rj.get("result", rj)
+    if isinstance(res, list):
+        try:
+            return parse_obj_as(list[OzonPosting], res)
+        except ValidationError:
+            return [] # or handle error
+    
+    try:
+        validated_response = parse_obj_as(OzonPostingResponse, res)
+        return validated_response.result
+    except ValidationError:
+        return [] # or handle error
+
+
+def _fetch_returns(client_id: str, api_key: str, status: str = "") -> list:
+    """Внутренняя функция для получения возвратов (FBO) с Ozon API."""
+    payload = {
+        "dir": "asc",
+        "filter": {},
+        "limit": 1000,
+        "offset": 0,
+    }
+    if status:
+        payload["filter"]["status"] = status
+    
+    try:
+        resp = requests.post(
+            f"{OZON_BASE}/v2/returns/fbo/list",
             headers=_headers(client_id, api_key),
-            json={
-                "dir": "asc",
-                "filter": {
-                    "since": start,
-                },
-                "limit": 1000,
-                "offset": 0,
-            },
+            json=payload,
             timeout=30,
         )
-        if orders_resp.status_code == 404:
-            # Фоллбэк на v2
-            orders_resp = requests.post(
-                f"{OZON_BASE}/v2/posting/fbo/list",
-                headers=_headers(client_id, api_key),
-                json={
-                    "dir": "asc",
-                    "filter": {"since": start},
-                    "limit": 1000,
-                    "offset": 0,
-                },
-                timeout=30,
-            )
-        orders_resp.raise_for_status()
-        rj = orders_resp.json()
-        if isinstance(rj, list):
-            orders_data = rj
-        else:
-            res = rj.get("result", rj)
-            if isinstance(res, list):
-                orders_data = res
-            else:
-                orders_data = res.get("postings") or res.get("items") or []
-        ordered_count = len(orders_data)
+        if resp.status_code == 404:
+            # На части аккаунтов/регионов эндпоинт может отсутствовать или быть отключён.
+            # В этом случае считаем, что возвратов нет, и продолжаем без ошибки.
+            logging.warning("Ozon returns endpoint 404 for client %s — treating as empty.", client_id)
+            return []
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        logging.error("Ozon API request for returns failed: %s", e)
+        raise
 
-        delivered_resp = requests.post(
-            f"{OZON_BASE}/v3/posting/fbo/list",
-            headers=_headers(client_id, api_key),
-            json={
-                "dir": "asc",
-                "filter": {
-                    "since": start,
-                    "status": "delivered",
-                },
-                "limit": 1000,
-                "offset": 0,
-            },
-            timeout=30,
-        )
-        if delivered_resp.status_code == 404:
-            delivered_resp = requests.post(
-                f"{OZON_BASE}/v2/posting/fbo/list",
-                headers=_headers(client_id, api_key),
-                json={
-                    "dir": "asc",
-                    "filter": {"since": start, "status": "delivered"},
-                    "limit": 1000,
-                    "offset": 0,
-                },
-                timeout=30,
-            )
-        delivered_resp.raise_for_status()
-        rj2 = delivered_resp.json()
-        if isinstance(rj2, list):
-            delivered_data = rj2
-        else:
-            res2 = rj2.get("result", rj2)
-            if isinstance(res2, list):
-                delivered_data = res2
-            else:
-                delivered_data = res2.get("postings") or res2.get("items") or []
-        purchased_count = len(delivered_data)
+    rj = resp.json()
+    try:
+        validated_response = parse_obj_as(OzonReturnResponse, rj)
+        return validated_response.result
+    except ValidationError as e:
+        logging.error("Ozon returns validation error: %s", e)
+        return []
 
-        return {"ordered": ordered_count, "purchased": purchased_count}
-    except Exception as exc:
-        logging.exception("Ozon fetch_today_metrics failed: %s", exc)
-        return {"ordered": 0, "purchased": 0}
+
+def fetch_today_metrics(accounts: list[dict], tz: ZoneInfo, ttl_seconds: int | None = None, force: bool = False) -> dict:
+    """Возвращает количество заказов и выкупов за сегодня по Ozon (FBO) для нескольких аккаунтов."""
+    def _produce() -> dict:
+        final_ordered_count = 0
+        final_purchased_count = 0
+        final_ordered_sku_counts: dict[str, int] = defaultdict(int)
+        final_purchased_sku_counts: dict[str, int] = defaultdict(int)
+
+        try:
+            start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+            for account in accounts:
+                client_id = account["client_id"]
+                api_key = account["api_key"]
+
+                postings = _fetch_postings(client_id, api_key, start)
+                for p in postings:
+                    for prod in p.products:
+                        qty_i = prod.quantity
+                        sku_name = alias_sku(str(prod.offer_id))
+                        final_ordered_sku_counts[sku_name] += qty_i
+                        final_ordered_count += qty_i
+
+                postings_delivered = _fetch_postings(client_id, api_key, start, status="delivered")
+                for p in postings_delivered:
+                    for prod in p.products:
+                        qty_i = prod.quantity
+                        sku_name = alias_sku(str(prod.offer_id))
+                        final_purchased_sku_counts[sku_name] += qty_i
+                        final_purchased_count += qty_i
+
+            ordered_skus = sort_pairs_by_alias(list(final_ordered_sku_counts.items()))
+            purchased_skus = sort_pairs_by_alias(list(final_purchased_sku_counts.items()))
+
+            return {
+                "ordered": final_ordered_count,
+                "purchased": final_purchased_count,
+                "ordered_skus": ordered_skus,
+                "purchased_skus": purchased_skus,
+            }
+        except Exception as exc:
+            logging.exception("Ozon fetch_today_metrics failed: %s", exc)
+            raise
+
+    cache_key = f"ozon_today_multi"
+    return get_or_set(cache_key, ttl_seconds, _produce, force=force)
+
+
+def fetch_balance(accounts: list[dict], ttl_seconds: int | None = None, force: bool = False) -> dict:
+    """Возвращает текущий баланс на счетах Ozon."""
+
+    def _produce() -> dict:
+        total_balance = 0.0
+        
+        for account in accounts:
+            client_id = account["client_id"]
+            api_key = account["api_key"]
+            try:
+                resp = requests.post(
+                    f"{OZON_BASE}/v1/finance/cashbox/list",
+                    headers=_headers(client_id, api_key),
+                    json={},
+                    timeout=30,
+                )
+                if resp.status_code == 404:
+                    logging.warning(
+                        "Ozon cashbox endpoint 404 for client %s — treating balance as 0.", client_id
+                    )
+                    continue
+                resp.raise_for_status()
+                rj = resp.json()
+                try:
+                    validated_response = parse_obj_as(OzonCashboxResponse, rj)
+                except ValidationError as e:
+                    logging.error("Ozon balance validation error for client %s: %s", client_id, e)
+                    continue
+                for cashbox in validated_response.result:
+                    if cashbox.currency_code == "RUB":
+                        total_balance += cashbox.balance
+            except requests.RequestException as e:
+                logging.error("Ozon API request for balance failed for client %s: %s", client_id, e)
+                continue
+            except Exception as exc:
+                logging.exception("Ozon fetch_balance failed for client %s: %s", client_id, exc)
+                continue
+            
+        return {"balance": total_balance}
+
+    cache_key = "ozon_balance_multi"
+    return get_or_set(cache_key, ttl_seconds, _produce, force=force)
 
 
