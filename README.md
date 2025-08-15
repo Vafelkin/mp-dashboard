@@ -168,11 +168,11 @@ nginx -t && systemctl reload nginx
 
 ### 5) Источники данных и устойчивость
 - Wildberries Statistics API: `stocks`, `orders`, `sales` с полуночи.
-- Ozon Seller API (FBO): `v1/analytics/stocks`, `posting fbo list (v3/v2)`, `v2/returns/fbo/list`, `v1/finance/cashbox/list`.
-- Обработка ошибок:
-  - WB 429: возвращаем данные из кэша (или нули) — карточка не ломается.
-  - Ozon 404 на `returns`/`cashbox`: считаем пусто/0 и продолжаем.
-  - В `routes/dashboard.py` части Ozon собираются независимо (stocks/today/balance).
+- Ozon Seller API (FBO): `v1/analytics/stocks`, `posting fbo list (v2)`.
+- Обработка ошибок и кэш:
+  - In‑process TTL‑кэш (`CACHE_TTL_SECONDS`), `/?force=1` принудительно обновляет.
+  - WB 429 и ошибки: отдаём in‑process кэш; если его нет — используем persistent‑кэш в БД (`KeyValue`, ключ `wb_today:YYYY-MM-DD`); в крайнем случае — нули.
+  - Части Ozon собираются независимо (stocks/today), чтобы падение одного эндпоинта не ломало весь блок.
 
 ### 6) Кэширование
 In‑process TTL (`app/utils/cache.py`). Параметр `CACHE_TTL_SECONDS`. Принудительное обновление: `/?force=1`.
