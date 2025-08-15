@@ -1,12 +1,11 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, current_app, render_template, request, jsonify
+from flask import Blueprint, current_app, render_template, request
 import logging
 
 from ..services.wb_api import fetch_stocks as wb_fetch_stocks, fetch_today_metrics as wb_fetch_today
 from ..services.ozon_api import fetch_stocks as ozon_fetch_stocks, fetch_today_metrics as ozon_fetch_today, fetch_balance as ozon_fetch_balance
-from ..models import db, StockSnapshot, DailyMetric
 from ..presenters import prepare_dashboard_context
 
 
@@ -22,7 +21,7 @@ def dashboard_index():
     cache_ttl = int(current_app.config.get("CACHE_TTL_SECONDS", 600))
     force = request.args.get("force") == "1"
 
-    # Fetch data from services
+    # WB
     if not wb_token:
         wb_data = {"error": True, "reason": "missing_wb_token"}
     else:
@@ -30,9 +29,11 @@ def dashboard_index():
             wb_stocks = wb_fetch_stocks(wb_token, ttl_seconds=cache_ttl, force=force)
             wb_today = wb_fetch_today(wb_token, tz, ttl_seconds=cache_ttl, force=force)
             wb_data = {"stocks": wb_stocks, "today": wb_today}
-        except Exception:
+        except Exception as exc:
+            logging.exception("WB failed: %s", exc)
             wb_data = {"error": True}
 
+    # Ozon
     ozon_accounts = current_app.config.get("OZON_ACCOUNTS", [])
     if not ozon_accounts:
         ozon_data = {"error": True, "reason": "missing_ozon_accounts"}
@@ -54,7 +55,6 @@ def dashboard_index():
             logging.exception("Ozon balance failed: %s", exc)
         ozon_data = {"stocks": ozon_stocks, "today": ozon_today, "balance": ozon_balance}
 
-    # Prepare context for template using the presenter
     context = prepare_dashboard_context(
         wb_data=wb_data,
         ozon_data=ozon_data,

@@ -2,9 +2,9 @@ import os
 from dotenv import load_dotenv
 
 
-# Важно: переопределяем переменные окружения значениями из .env,
-# чтобы сервис systemd с пустыми значениями не "затирал" реальные креды
+# Переопределяем переменные окружения значениями из .env
 load_dotenv(override=True)
+
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -17,7 +17,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     WB_API_TOKEN = os.environ.get("WB_API_TOKEN", "")
-    
+
     # --- Ozon: поддержка нескольких магазинов ---
     OZON_ACCOUNTS = []
     i = 1
@@ -25,10 +25,10 @@ class Config:
         client_id = os.environ.get(f"OZON_CLIENT_ID_{i}")
         api_key = os.environ.get(f"OZON_API_KEY_{i}")
         skus_str = os.environ.get(f"OZON_SKUS_{i}", "")
-        
+
         if not client_id or not api_key:
             break
-            
+
         skus = [s.strip() for s in skus_str.split(",") if s.strip()]
         OZON_ACCOUNTS.append({
             "client_id": client_id,
