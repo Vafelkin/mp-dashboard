@@ -1,5 +1,13 @@
 # MP Dashboard — Wildberries + Ozon (FBO)
 
+![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Flask 3](https://img.shields.io/badge/Flask-3.0-black?logo=flask)
+![Gunicorn](https://img.shields.io/badge/Gunicorn-21-green)
+![Nginx](https://img.shields.io/badge/Nginx-reverse__proxy-009639?logo=nginx&logoColor=white)
+![OS Linux](https://img.shields.io/badge/OS-Linux-FCC624?logo=linux&logoColor=black)
+![Status](https://img.shields.io/badge/status-prod--ready-success)
+![License](https://img.shields.io/badge/license-internal-lightgrey)
+
 Мини‑портал для мониторинга показателей по Wildberries и Ozon:
 - Остатки на складах
 - Заказано сегодня
@@ -7,6 +15,19 @@
 - Детализация по SKU (алиасы) и по складам (тултипы у позиций)
 
 Интерфейс: две колонки — слева Wildberries, справа Ozon.
+
+## Скриншоты
+<p align="center">
+  <img src="docs/screenshot-dashboard.png" alt="Дашборд: WB + Ozon" width="820" />
+  <br/>
+  <em>Главный экран дашборда (две колонки: WB и Ozon)</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshot-mobile.png" alt="Мобильная версия" width="360" />
+  <br/>
+  <em>Мобильная версия (адаптивная верстка)</em>
+</p>
 
 ## Стек
 - Python 3.12, Flask, Gunicorn
@@ -40,11 +61,34 @@
  — алиасы и порядок отображения (Кронштейны → Карточки → Пакеты 8 → Пакеты 5 → Пакеты 2).
 
 ## Roadmap
-- Графики продаж/выкупов
-- Планировщик сбора метрик (systemd timer)
-- Фильтры (склады, SKU, период)
-- Управление алиасами/порядком через UI
-- HTTPS (Let's Encrypt)
+
+- Данные и доменная логика
+  - [x] Агрегация WB/Ozon (FBO) по складам и SKU
+  - [x] Алиасы SKU и пользовательский порядок
+  - [ ] Фильтры: склады, SKU, период (день/неделя/месяц)
+  - [ ] Графики 14/30/90 дней (заказы/выкупы/остатки)
+  - [ ] Экспорт CSV/JSON
+
+- UX/UI
+  - [x] Тултипы по складам у SKU
+  - [ ] Тёмная тема
+  - [ ] Автообновление виджетов (websocket/long polling)
+  - [ ] Страница «Справка/документация» в UI
+
+- Производительность и устойчивость
+  - [x] In‑process TTL‑кэш; `/?force=1`
+  - [x] Фоллбэки: WB 429 → кэш; Ozon 404 returns/cashbox → пусто/0
+  - [ ] Redis/файловый кэш (опционально)
+  - [ ] Параллельные запросы к нескольким аккаунтам Ozon
+
+- Инфраструктура
+  - [x] systemd + Nginx (reverse proxy)
+  - [ ] systemd timers: регулярный refresh метрик
+  - [ ] HTTPS (Let's Encrypt)
+
+- Наблюдаемость
+  - [ ] `/health` и `/metrics` (Prometheus)
+  - [ ] Структурированные логи (info/warn/error)
 
 ---
 
