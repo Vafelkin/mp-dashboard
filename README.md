@@ -16,19 +16,6 @@
 
 Интерфейс: две колонки — слева Wildberries, справа Ozon.
 
-## Скриншоты
-<p align="center">
-  <img src="docs/screenshot-dashboard.png" alt="Дашборд: WB + Ozon" width="820" />
-  <br/>
-  <em>Главный экран дашборда (две колонки: WB и Ozon)</em>
-</p>
-
-<p align="center">
-  <img src="docs/screenshot-mobile.png" alt="Мобильная версия" width="360" />
-  <br/>
-  <em>Мобильная версия (адаптивная верстка)</em>
-</p>
-
 ## Стек
 - Python 3.12, Flask, Gunicorn
 - Bootstrap 5 (Bootswatch Cosmo)
