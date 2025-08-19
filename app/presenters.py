@@ -69,7 +69,7 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
         }
         wb_today_context = wb_today
         wb_ordered_skus_details = wb_today.get("ordered_skus_details", {})
-        wb_purchased_skus_lines = [f"{sku}: {count}" for sku, count in wb_today.get("purchased_skus", [])]
+        wb_purchased_skus_details = wb_today.get("purchased_skus_details", {})
 
     # Ozon
     if ozon_data.get("error"):
@@ -113,7 +113,7 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
         "stocks_ozon": stocks_ozon_context,
         "wb_today": wb_today_context,
         "wb_ordered_skus_details": wb_ordered_skus_details,
-        "wb_purchased_skus_lines": wb_purchased_skus_lines,
+        "wb_purchased_skus_details": wb_purchased_skus_details,
         "ozon_today": ozon_today_context,
         "ozon_ordered_skus_lines": ozon_ordered_skus_lines,
         "ozon_purchased_skus_lines": ozon_purchased_skus_lines,

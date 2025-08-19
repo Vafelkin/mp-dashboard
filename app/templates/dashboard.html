@@ -88,7 +88,7 @@
     <div class="vstack gap-3">
       {{ render_stocks_card("Остатки на складах", stocks_wb) }}
       {{ render_card("Заказано сегодня", wb_today.ordered, wb_ordered_skus_details, 'wb-ordered') }}
-      {{ render_card("Выкуплено сегодня", wb_today.purchased, None, 'wb-purchased') }}
+      {{ render_card("Выкуплено сегодня", wb_today.purchased, wb_purchased_skus_details, 'wb-purchased') }}
     </div>
   </div>
 

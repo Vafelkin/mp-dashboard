@@ -21,6 +21,7 @@ def _headers(token: str) -> dict:
 
 @cache.memoize(timeout=get_timeout_to_next_half_hour)
 def fetch_stocks(token: str) -> dict:
+    day_key = f"wb_stocks"
     try:
         date_from = (datetime.utcnow() - timedelta(days=365)).strftime("%Y-%m-%d")
         url = f"{WB_STATS_BASE}/api/v1/supplier/stocks"
@@ -58,7 +59,7 @@ def fetch_stocks(token: str) -> dict:
             pairs = [(w, q) for w, q in wh_map.items() if q > 0]
             pairs.sort(key=lambda x: (-x[1], x[0]))
             sku_details[sku_name] = pairs
-        return {
+        result = {
             "total": total,
             "warehouses": warehouses,
             "skus": skus,
@@ -69,13 +70,19 @@ def fetch_stocks(token: str) -> dict:
                 "from_client": dict(by_sku_in_way_from),
             },
         }
+        _save_to_persistent_cache(day_key, result)
+        return result
     except Exception as exc:
         logging.exception("WB fetch_stocks failed: %s", exc)
+        cached = _load_from_persistent_cache(day_key)
+        if cached:
+            return cached
         raise
 
 
 @cache.memoize(timeout=get_timeout_to_next_half_hour)
 def fetch_today_metrics(token: str, tz: ZoneInfo) -> dict:
+    day_key = f"wb_today:{datetime.now(tz).date().isoformat()}"
     try:
         start_utc = datetime.now(ZoneInfo("UTC")).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
         date_from = start_utc.strftime("%Y-%m-%d")
@@ -148,20 +155,70 @@ def fetch_today_metrics(token: str, tz: ZoneInfo) -> dict:
                 dedup_sales.append(it)
         purchased_count = len(dedup_sales)
 
+        purchased_skus_details: dict[str, list] = defaultdict(list)
+        for it in dedup_sales:
+            sku_key = alias_sku(str(it.get("supplierArticle")))
+            sale_date_utc = datetime.fromisoformat(it.get("date"))
+            sale_date_local = sale_date_utc.astimezone(tz)
+            
+            details = {
+                "time": sale_date_local.strftime('%H:%M'),
+                "city": it.get("oblastOkrugName", "Неизвестно"),
+                "warehouse": it.get("warehouseName", "Неизвестно"),
+            }
+            purchased_skus_details[sku_key].append(details)
+
+        # Сортируем продажи внутри каждого SKU по времени
+        for sku in purchased_skus_details:
+            purchased_skus_details[sku].sort(key=lambda x: x['time'])
+
         purchased_sku_counts: dict[str, int] = defaultdict(int)
         for it in dedup_sales:
             sku_key = alias_sku(str(it.get("supplierArticle")))
             purchased_sku_counts[sku_key] += 1
         purchased_skus = sort_pairs_by_alias(list(purchased_sku_counts.items()))
 
-        return {
+        result = {
             "ordered": ordered_count,
             "purchased": purchased_count,
             "ordered_skus_details": ordered_skus_details,
+            "purchased_skus_details": purchased_skus_details,
             "purchased_skus": purchased_skus,
         }
+        _save_to_persistent_cache(day_key, result)
+        return result
     except Exception as exc:
         logging.exception("WB fetch_today_metrics failed: %s", exc)
+        cached = _load_from_persistent_cache(day_key)
+        if cached:
+            return cached
         raise
+
+
+def _save_to_persistent_cache(key: str, data: dict):
+    """Сохраняет данные в резервный кэш в БД."""
+    try:
+        row = KeyValue.query.filter_by(key=key).first()
+        if not row:
+            row = KeyValue(key=key)
+        row.value_json = json.dumps(data, ensure_ascii=False)
+        row.updated_at = datetime.utcnow()
+        db.session.add(row)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logging.exception("Failed to save to persistent cache")
+
+
+def _load_from_persistent_cache(key: str) -> dict | None:
+    """Загружает данные из резервного кэша в БД."""
+    try:
+        row = KeyValue.query.filter_by(key=key).first()
+        if row and row.value_json:
+            logging.warning("Returning data from persistent cache for key %s", key)
+            return json.loads(row.value_json)
+    except Exception:
+        logging.exception("Failed to load from persistent cache")
+    return None
 
 
