@@ -107,6 +107,7 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
         }
         ozon_today_context = ozon_today
         ozon_ordered_skus_lines = [f"{sku}: {count}" for sku, count in ozon_today.get("ordered_skus", [])]
+        ozon_ordered_skus_details = ozon_today.get("ordered_skus_details", {})
         ozon_purchased_skus_lines = []
 
     context = {
@@ -117,6 +118,7 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
         "wb_purchased_skus_details": wb_purchased_skus_details,
         "ozon_today": ozon_today_context,
         "ozon_ordered_skus_lines": ozon_ordered_skus_lines,
+        "ozon_ordered_skus_details": ozon_ordered_skus_details,
         "ozon_purchased_skus_lines": ozon_purchased_skus_lines,
         "now": now,
     }

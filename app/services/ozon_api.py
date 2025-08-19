@@ -138,7 +138,9 @@ def fetch_today_metrics(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], 
     Агрегирует данные о заказах за сегодняшний день по всем аккаунтам Ozon.
 
     Для каждого аккаунта запрашивает все отправления (postings) с начала
-    сегодняшнего дня по указанной таймзоне и суммирует количество товаров в них.
+    сегодняшнего дня по указанной таймзоне. Собирает общую статистику
+    (количество заказанных товаров, разбивка по SKU), а также детализацию
+    по каждому заказу для отображения в интерфейсе.
     """
     accounts = [
         {'client_id': acc[0], 'api_key': acc[1], 'skus': list(acc[2])}
@@ -147,6 +149,7 @@ def fetch_today_metrics(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], 
 
     ordered_total = 0
     ordered_by_sku: dict[str, int] = defaultdict(int)
+    ordered_skus_details: dict[str, list] = defaultdict(list)
     try:
         start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         for account in accounts:
@@ -159,12 +162,33 @@ def fetch_today_metrics(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], 
                     sku_name = alias_sku(str(pr.offer_id))
                     ordered_by_sku[sku_name] += qty
                     ordered_total += qty
+
+                    order_time_utc = datetime.fromisoformat(p.in_process_at.replace('Z', '+00:00'))
+                    order_time_local = order_time_utc.astimezone(tz)
+
+                    city = "Неизвестно"
+                    warehouse = p.cluster_from or "Неизвестно"
+                    if p.analytics_data:
+                        city = p.analytics_data.city or p.analytics_data.region or "Неизвестно"
+                        warehouse = p.cluster_from or p.analytics_data.warehouse_name or "Неизвестно"
+
+                    details = {
+                        "time": order_time_local.strftime('%H:%M'),
+                        "warehouse": warehouse,
+                        "city": city
+                    }
+                    ordered_skus_details[sku_name].append(details)
         
+        # Сортируем заказы внутри каждого SKU по времени
+        for sku in ordered_skus_details:
+            ordered_skus_details[sku].sort(key=lambda x: x['time'])
+
         return {
             "ordered": ordered_total,
             "purchased": 0, # Больше не запрашиваем
             "ordered_skus": sort_pairs_by_alias(list(ordered_by_sku.items())),
             "purchased_skus": [], # Больше не запрашиваем
+            "ordered_skus_details": ordered_skus_details,
         }
     except (ValidationError, Exception) as exc:
         logging.exception("Ozon fetch_today_metrics failed: %s", exc)

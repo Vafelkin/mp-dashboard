@@ -23,8 +23,10 @@
               {% for order in orders %}
               <tr>
                 <td class="ps-3">{{ order.time }}</td>
+                {% if 'wb' in card_id %}
                 <td>{{ order.city }}</td>
                 <td>{{ order.warehouse }}</td>
+                {% endif %}
               </tr>
               {% endfor %}
               </tbody>
@@ -97,7 +99,7 @@
     <div class="text-center mb-2"><h5 class="mb-0">Ozon</h5></div>
     <div class="vstack gap-3">
       {{ render_stocks_card("Остатки на складах", stocks_ozon) }}
-      {{ render_card("Заказано сегодня", ozon_today.ordered, None, 'ozon-ordered') }}
+      {{ render_card("Заказано сегодня", ozon_today.ordered, ozon_ordered_skus_details, 'ozon-ordered') }}
     </div>
   </div>
 </div>

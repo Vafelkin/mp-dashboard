@@ -48,8 +48,16 @@ class OzonPostingProduct(BaseModel):
     quantity: int
     offer_id: str
 
+class OzonAnalyticsData(BaseModel):
+    city: Optional[str] = ""
+    region: Optional[str] = ""
+    warehouse_name: Optional[str] = ""
+
 class OzonPosting(BaseModel):
     products: List[OzonPostingProduct]
+    in_process_at: str
+    cluster_from: Optional[str] = ""
+    analytics_data: Optional[OzonAnalyticsData] = None
 
 class OzonPostingResponse(BaseModel):
     result: List[OzonPosting]
