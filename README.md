@@ -1,132 +1,91 @@
 # MP Dashboard — Wildberries + Ozon (FBO)
 
-![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![Flask 3](https://img.shields.io/badge/Flask-3.0-black?logo=flask)
-![Gunicorn](https://img.shields.io/badge/Gunicorn-21-green)
-![Nginx](https://img.shields.io/badge/Nginx-reverse__proxy-009639?logo=nginx&logoColor=white)
-![OS Linux](https://img.shields.io/badge/OS-Linux-FCC624?logo=linux&logoColor=black)
-![Status](https://img.shields.io/badge/status-prod--ready-success)
-![License](https://img.shields.io/badge/license-internal-lightgrey)
+Мини-портал для мониторинга ключевых показателей по Wildberries и Ozon.
 
-Мини‑портал для мониторинга показателей по Wildberries и Ozon:
-- Остатки на складах
-- Заказано сегодня
-- Выкуплено сегодня (WB)
-- Детализация по SKU (алиасы) и по складам (тултипы у позиций)
+![Скриншот дашборда](https://i.imgur.com/example.png) <!-- Заменить на актуальный скриншот -->
 
-Интерфейс: две колонки — слева Wildberries, справа Ozon.
+## Функционал
 
-## Стек
-- Python 3.12, Flask, Gunicorn
-- Bootstrap 5 (Bootswatch Cosmo)
-- Nginx
-- SQLite (MVP)
+- **Общая сводка**: Агрегированные данные по остаткам на складах, заказам и выкупам за сегодня.
+- **Поддержка нескольких аккаунтов**: Данные со всех ваших магазинов Ozon автоматически суммируются.
+- **Детализация по товарам (SKU)**:
+  - Отображение остатков и движения товаров (в пути к клиенту/от клиента) по каждому SKU.
+  - Настраиваемые **алиасы** и порядок сортировки для товаров.
+- **Интерактивные детали заказов**: Раскрывающиеся списки в плитке "Заказано сегодня" (для WB) с информацией о времени, городе и складе каждого заказа.
+- **Умное кэширование**: Данные автоматически обновляются каждые 30 минут (в `:00` и `:30` минут часа) для минимизации нагрузки на API и предотвращения блокировок.
 
-## Структура
+## Стек технологий
 
+- **Бэкенд**: Python 3.12, Flask, Gunicorn
+- **Кэширование**: Flask-Caching (файловая система)
+- **Валидация данных**: Pydantic
+- **База данных**: SQLite (по умолчанию, для хранения временных данных)
+- **Фронтенд**: Bootstrap 5 (Bootswatch), JavaScript
+- **Веб-сервер**: Nginx (в качестве reverse proxy)
 
-## Конфигурация
- (не коммитится):
+## Установка и запуск
 
-- WB docs: https://dev.wildberries.ru/openapi/api-information
-- Ozon docs: https://docs.ozon.ru/api/seller/
+#### 1. Клонирование репозитория
+```bash
+git clone <URL репозитория>
+cd mp-dashboard
+```
 
-## Запуск (dev)
-
-
-## Продакшн (кратко)
-- systemd: Gunicorn на 127.0.0.1:8001
-- Nginx: reverse proxy :80 → 127.0.0.1:8001
-
-## Источники данных
-- WB Statistics API: stocks/orders/sales c  (начало суток)
-- Ozon Seller API:
-  - Остатки FBO: analytics/stocks
-  - Заказано/выкуплено: posting FBO list (v2)
-
-## Алиасы SKU
- — алиасы и порядок отображения (Кронштейны → Карточки → Пакеты 8 → Пакеты 5 → Пакеты 2).
-
-## Roadmap
-
-- Данные и доменная логика
-  - [x] Агрегация WB/Ozon (FBO) по складам и SKU
-  - [x] Алиасы SKU и пользовательский порядок
-  - [ ] Фильтры: склады, SKU, период (день/неделя/месяц)
-  - [ ] Графики 14/30/90 дней (заказы/выкупы/остатки)
-  - [ ] Экспорт CSV/JSON
-
-- UX/UI
-  - [x] Тултипы по складам у SKU
-  - [ ] Тёмная тема
-  - [ ] Автообновление виджетов (websocket/long polling)
-  - [ ] Страница «Справка/документация» в UI
-
-- Производительность и устойчивость
-  - [x] In‑process TTL‑кэш; `/?force=1`
-  - [ ] Redis/файловый кэш (опционально)
-  - [ ] Параллельные запросы к нескольким аккаунтам Ozon
-
-- Инфраструктура
-  - [x] systemd + Nginx (reverse proxy)
-  - [ ] systemd timers: регулярный refresh метрик
-  - [ ] HTTPS (Let's Encrypt)
-
-- Наблюдаемость
-  - [ ] `/health` и `/metrics` (Prometheus)
-  - [ ] Структурированные логи (info/warn/error)
-
----
-
-## Полный гайд по проекту
-
-### 1) Стек и требования
-- Python 3.12, Flask 3, Gunicorn
-- Nginx (reverse proxy)
-- SQLite по умолчанию (можно Postgres через `DATABASE_URL`)
-
-### 2) Установка и запуск (dev)
+#### 2. Настройка виртуального окружения
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-cp -n .env.example .env  # затем заполните .env
-
-# локальный запуск через Gunicorn
-gunicorn --workers 2 --bind 127.0.0.1:8001 wsgi:app
-# или простой тест
-python wsgi.py
 ```
-Откройте `http://127.0.0.1:8001/`.
 
-### 3) Переменные окружения (.env)
-Пример `.env` (лежит в `mp-dashboard/.env`):
+#### 3. Конфигурация
+Создайте файл `.env` в корневой директории проекта (`mp-dashboard/.env`) на основе примера `.env.example`.
+
+```bash
+cp -n .env.example .env
 ```
-# Wildberries
+
+Заполните `.env` вашими данными:
+```env
+# Wildberries API токен
 WB_API_TOKEN=...
 
-# Ozon — несколько магазинов (FBO)
+# Ozon — поддержка нескольких магазинов
+# Для первого магазина:
 OZON_CLIENT_ID_1=...
 OZON_API_KEY_1=...
-OZON_SKUS_1=123,456,789
+OZON_SKUS_1=123456,789012 # (необязательно, для фильтрации остатков)
 
-# Доп. магазины
+# Для второго магазина (и последующих):
 OZON_CLIENT_ID_2=...
 OZON_API_KEY_2=...
 OZON_SKUS_2=...
 
+# Общие настройки
 TIMEZONE=Europe/Moscow
-SECRET_KEY=change-me
-
-# DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname
-CACHE_TTL_SECONDS=600
+SECRET_KEY=super-secret-key-for-flask
 ```
-Важно: `config.py` делает `load_dotenv(override=True)`, поэтому значения из `.env` перекрывают системные.
 
-### 4) Продакшн: systemd + Nginx
-Юнит `/etc/systemd/system/mp-dashboard.service`:
+#### 4. Локальный запуск
+Для разработки и тестирования можно запустить приложение напрямую:
+```bash
+# Через Gunicorn (рекомендуется)
+gunicorn --workers 2 --bind 127.0.0.1:8001 wsgi:app
+
+# Или через встроенный сервер Flask (для отладки)
+python wsgi.py
 ```
+После запуска дашборд будет доступен по адресу `http://127.0.0.1:8001/`.
+
+## Развертывание (Production)
+
+Проект настроен для работы под управлением `systemd` и `Nginx`.
+
+- **systemd**: Юнит-файл `mp-dashboard.service` обеспечивает автоматический запуск и перезапуск Gunicorn-сервера.
+- **Nginx**: Конфигурация для reverse proxy (`:80` → `127.0.0.1:8001`) находится в `/etc/nginx/sites-available/`.
+
+Пример юнита `systemd` (`/etc/systemd/system/mp-dashboard.service`):
+```ini
 [Unit]
 Description=MP Dashboard (Flask) via Gunicorn
 After=network.target
@@ -135,71 +94,29 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/mp-dashboard
-EnvironmentFile=-/etc/mp-dashboard.env
-Environment=PYTHONUNBUFFERED=1
-ExecStart=/root/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8001 wsgi:app
+ExecStart=/root/mp-dashboard/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8001 wsgi:app
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
 ```
-Nginx (пример):
-```
-server {
-    listen 80 default_server;
-    server_name _;
-    location / {
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://127.0.0.1:8001;
-    }
-}
-```
-Команды:
-```bash
-systemctl enable --now mp-dashboard
-systemctl status mp-dashboard --no-pager
-journalctl -u mp-dashboard -f
-nginx -t && systemctl reload nginx
-```
 
-### 5) Источники данных и устойчивость
-- Wildberries Statistics API: `stocks`, `orders`, `sales` с полуночи.
-- Ozon Seller API (FBO): `v1/analytics/stocks`, `posting fbo list (v2)`.
-- Обработка ошибок и кэш:
-  - In‑process TTL‑кэш (`CACHE_TTL_SECONDS`), `/?force=1` принудительно обновляет.
-  - WB 429 и ошибки: отдаём in‑process кэш; если его нет — используем persistent‑кэш в БД (`KeyValue`, ключ `wb_today:YYYY-MM-DD`); в крайнем случае — нули.
-  - Части Ozon собираются независимо (stocks/today), чтобы падение одного эндпоинта не ломало весь блок.
+## Ключевые особенности кода
 
-### 6) Кэширование
-In‑process TTL (`app/utils/cache.py`). Параметр `CACHE_TTL_SECONDS`. Принудительное обновление: `/?force=1`.
+#### Структура проекта
+Проект имеет четкое разделение на слои:
+- `app/routes`: Обработчики HTTP-запросов (контроллеры).
+- `app/services`: Логика взаимодействия с внешними API (WB, Ozon).
+- `app/presenters`: Подготовка данных для отображения в шаблонах.
+- `app/schemas`: Pydantic-схемы для валидации ответов API.
+- `app/utils`: Вспомогательные утилиты (алиасы SKU, логика кэша).
+- `app/templates`: Jinja2-шаблоны.
 
-### 7) Алиасы и порядок SKU
-`app/utils/sku_aliases.py`: `ALIAS_MAP` и `ALIAS_ORDER`. Сортировка учитывает порядок, затем имя.
+#### Кэширование
+- Используется `Flask-Caching` с файловым бэкендом, что обеспечивает общий кэш для всех процессов Gunicorn.
+- **Таймаут кэша динамический**: Он рассчитывается так, чтобы сбрасываться ровно в `:00` и `:30` минут каждого часа по московскому времени.
+- Принудительная очистка кэша доступна по URL `/?force=1`.
 
-### 8) Структура проекта (ключевое)
-```
-app/
-  __init__.py
-  models.py
-  presenters.py
-  routes/dashboard.py
-  services/{wb_api.py, ozon_api.py}
-  templates/{base.html, dashboard.html}
-  static/js/app.js
-config.py
-wsgi.py
-requirements.txt
-README.md
-```
-
-### 9) Отладка
-- `debug_ozon.py` — пример запроса к Ozon в контексте приложения.
-
-### 10) Документация
-- WB: https://dev.wildberries.ru/openapi/api-information
-- Ozon: https://docs.ozon.ru/api/seller/
-- В корне: `Документация Ozon Seller API.html`
+#### Алиасы и сортировка SKU
+Названия товаров (SKU) могут быть длинными и неудобными. В `app/utils/sku_aliases.py` можно настроить короткие и понятные **алиасы**, а также задать **порядок их отображения** на дашборде.

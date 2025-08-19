@@ -40,7 +40,12 @@ class Config:
 
     TIMEZONE = os.environ.get("TIMEZONE", "Europe/Moscow")
 
-    # Кэш для API-запросов (секунды) — 10 минут по умолчанию
-    CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "600"))
+    # Кэш для API-запросов (секунды) — 30 минут по умолчанию
+    CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "1800"))
+
+    # Настройки Flask-Caching
+    CACHE_TYPE = "FileSystemCache"
+    CACHE_DIR = os.path.join(BASE_DIR, "..", ".cache")
+    CACHE_DEFAULT_TIMEOUT = CACHE_TTL_SECONDS
 
 

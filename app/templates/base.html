@@ -10,10 +10,15 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
       <div class="container d-flex justify-content-between">
         <a class="navbar-brand" href="/">Дашборд</a>
-        <a id="forceRefreshBtn" class="btn btn-light btn-sm" href="/?force=1">
-          <span class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true"></span>
-          <span class="label">Обновить принудительно</span>
-        </a>
+        <div class="text-end">
+            {% if last_updated %}
+                <small class="text-white-50">
+                    Обновлено: {{ last_updated.strftime('%H:%M:%S') }} (обновление в :00 и :30)
+                </small>
+            {% else %}
+                <small class="text-white-50">Данные загружаются...</small>
+            {% endif %}
+        </div>
       </div>
     </nav>
     <main class="container my-4">

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Дашборд — MP Dashboard{% endblock %}
 
-{% macro render_card(title, value, sku_lines, card_id) %}
+{% macro render_card(title, value, sku_details, card_id) %}
 <div class="card">
   <div class="card-body text-center">
     <div class="text-muted mb-2">{{ title }}</div>
@@ -9,12 +9,29 @@
       <div class="text-danger small mt-2">Не удалось загрузить данные</div>
     {% else %}
       <div class="display-5 fw-bold">{{ value }}</div>
-      {% if sku_lines %}
-      <ul class="mt-2 small text-muted text-start list-unstyled mb-0">
-        {% for line in sku_lines %}
-        <li>{{ line }}</li>
+      {% if sku_details %}
+      <div class="mt-2 small text-muted text-start">
+        {% for sku, orders in sku_details.items() %}
+          <div class="mb-1">
+            <a class="text-decoration-none text-reset" data-bs-toggle="collapse" href="#collapse-{{ card_id }}-{{ loop.index }}" role="button">
+              {{ sku }}: {{ orders | length }}
+            </a>
+          </div>
+          <div class="collapse" id="collapse-{{ card_id }}-{{ loop.index }}">
+            <table class="table table-sm table-borderless table-hover small">
+              <tbody>
+              {% for order in orders %}
+              <tr>
+                <td class="ps-3">{{ order.time }}</td>
+                <td>{{ order.city }}</td>
+                <td>{{ order.warehouse }}</td>
+              </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% endfor %}
-      </ul>
+      </div>
       {% endif %}
     {% endif %}
   </div>
@@ -70,8 +87,8 @@
     <div class="text-center mb-2"><h5 class="mb-0">Wildberries</h5></div>
     <div class="vstack gap-3">
       {{ render_stocks_card("Остатки на складах", stocks_wb) }}
-      {{ render_card("Заказано сегодня", wb_today.ordered, wb_ordered_skus_lines) }}
-      {{ render_card("Выкуплено сегодня", wb_today.purchased, wb_purchased_skus_lines) }}
+      {{ render_card("Заказано сегодня", wb_today.ordered, wb_ordered_skus_details, 'wb-ordered') }}
+      {{ render_card("Выкуплено сегодня", wb_today.purchased, None, 'wb-purchased') }}
     </div>
   </div>
 
@@ -80,7 +97,7 @@
     <div class="text-center mb-2"><h5 class="mb-0">Ozon</h5></div>
     <div class="vstack gap-3">
       {{ render_stocks_card("Остатки на складах", stocks_ozon) }}
-      {{ render_card("Заказано сегодня", ozon_today.ordered, ozon_ordered_skus_lines) }}
+      {{ render_card("Заказано сегодня", ozon_today.ordered, None, 'ozon-ordered') }}
     </div>
   </div>
 </div>

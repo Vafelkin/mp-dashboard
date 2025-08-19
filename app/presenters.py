@@ -4,17 +4,6 @@
 from typing import Any
 
 
-def format_sku_list(items: list[tuple[str, int]], limit: int = 8) -> list[str]:
-    lines: list[str] = []
-    if not items:
-        return lines
-    for sku, cnt in items[:limit]:
-        lines.append(f"{sku}: {cnt}")
-    if len(items) > limit:
-        lines.append("…")
-    return lines
-
-
 def tooltip_text(details: list[tuple[str, int]]) -> str:
     if not details:
         return "Детализация недоступна"
@@ -51,7 +40,7 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
     if wb_data.get("error"):
         stocks_wb_context = {"error": True}
         wb_today_context = {"error": True}
-        wb_ordered_skus_lines: list[str] = []
+        wb_ordered_skus_details = {}
         wb_purchased_skus_lines: list[str] = []
     else:
         wb_stocks = wb_data.get("stocks", {})
@@ -79,8 +68,8 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
             "sku_tooltips": prepare_sku_tooltips(wb_stocks.get("sku_details", {})),
         }
         wb_today_context = wb_today
-        wb_ordered_skus_lines = format_sku_list(wb_today.get("ordered_skus", []))
-        wb_purchased_skus_lines = format_sku_list(wb_today.get("purchased_skus", []))
+        wb_ordered_skus_details = wb_today.get("ordered_skus_details", {})
+        wb_purchased_skus_lines = [f"{sku}: {count}" for sku, count in wb_today.get("purchased_skus", [])]
 
     # Ozon
     if ozon_data.get("error"):
@@ -88,7 +77,6 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
         ozon_today_context = {"error": True}
         ozon_ordered_skus_lines: list[str] = []
         ozon_purchased_skus_lines: list[str] = []
-        ozon_balance_context = {"balance": "—"}
     else:
         ozon_stocks = ozon_data.get("stocks", {})
         ozon_today = ozon_data.get("today", {})
@@ -117,24 +105,18 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
             "sku_tooltips": prepare_sku_tooltips(ozon_stocks.get("sku_details", {})),
         }
         ozon_today_context = ozon_today
-        ozon_ordered_skus_lines = format_sku_list(ozon_today.get("ordered_skus", []))
-        ozon_purchased_skus_lines = format_sku_list(ozon_today.get("purchased_skus", []))
-
-        ozon_balance_data = ozon_data.get("balance", {})
-        ozon_balance_context = {
-            "balance": f"{ozon_balance_data.get('balance', 0):,.0f} ₽".replace(",", " ")
-        }
+        ozon_ordered_skus_lines = [f"{sku}: {count}" for sku, count in ozon_today.get("ordered_skus", [])]
+        ozon_purchased_skus_lines = []
 
     context = {
         "stocks_wb": stocks_wb_context,
         "stocks_ozon": stocks_ozon_context,
         "wb_today": wb_today_context,
-        "wb_ordered_skus_lines": wb_ordered_skus_lines,
+        "wb_ordered_skus_details": wb_ordered_skus_details,
         "wb_purchased_skus_lines": wb_purchased_skus_lines,
         "ozon_today": ozon_today_context,
         "ozon_ordered_skus_lines": ozon_ordered_skus_lines,
         "ozon_purchased_skus_lines": ozon_purchased_skus_lines,
-        "ozon_balance": ozon_balance_context,
         "now": now,
     }
     return context
