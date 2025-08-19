@@ -15,13 +15,19 @@ class WBStockItem(BaseModel):
     nm_id: int = Field(..., alias="nmId")
 
 class WBOrderItem(BaseModel):
+    date: str
     srid: str
     supplier_article: str = Field(..., alias="supplierArticle")
+    warehouse_name: str = Field(..., alias="warehouseName")
+    oblast_okrug_name: str = Field(..., alias="oblastOkrugName")
     is_cancel: bool = Field(False, alias="isCancel")
 
 class WBSaleItem(BaseModel):
+    date: str
     srid: str
     supplier_article: str = Field(..., alias="supplierArticle")
+    warehouse_name: str = Field(..., alias="warehouseName")
+    oblast_okrug_name: str = Field(..., alias="oblastOkrugName")
     is_cancel: bool = Field(False, alias="isCancel")
 
 
@@ -35,7 +41,7 @@ class OzonStockItem(BaseModel):
     ads: float = 0.0
     idc: float = 0.0
 
-class OzonStockResponseItem(BaseModel):
+class OzonStockResponse(BaseModel):
     items: List[OzonStockItem]
 
 class OzonPostingProduct(BaseModel):

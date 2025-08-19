@@ -4,10 +4,13 @@ from collections import defaultdict
 import logging
 import requests
 from typing import List, Tuple
+from pydantic import ValidationError
+import json
 
 from .. import cache
 from ..utils.sku_aliases import alias_sku, sort_pairs_by_alias
 from ..utils.cache_utils import get_timeout_to_next_half_hour
+from ..schemas import OzonStockResponse, OzonPostingResponse
 
 
 OZON_BASE = "https://api-seller.ozon.ru"
@@ -22,6 +25,13 @@ def _headers(client_id: str, api_key: str) -> dict:
 
 
 def _make_hashable(accounts: list[dict]) -> Tuple[Tuple[str, str, Tuple[str, ...]], ...]:
+    """
+    Преобразует список словарей с данными аккаунтов в хешируемый кортеж.
+
+    Это необходимо для работы кэширования Flask-Caching, которое требует,
+    чтобы все аргументы функции были хешируемыми. Списки и словари
+    таковыми не являются.
+    """
     return tuple(
         (acc['client_id'], acc['api_key'], tuple(sorted(acc.get('skus', []))))
         for acc in sorted(accounts, key=lambda x: x['client_id'])
@@ -29,7 +39,13 @@ def _make_hashable(accounts: list[dict]) -> Tuple[Tuple[str, str, Tuple[str, ...
 
 @cache.memoize(timeout=get_timeout_to_next_half_hour)
 def fetch_stocks(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], ...]) -> dict:
-    """Агрегирует остатки по нескольким аккаунтам (FBO Analytics Stocks)."""
+    """
+    Агрегирует данные об остатках FBO по всем аккаунтам Ozon.
+
+    Проходит по каждому аккаунту, запрашивает остатки через /v1/analytics/stocks
+    и суммирует их. Данные разбиваются на чанки по 100 SKU, как того
+    требует API Ozon.
+    """
     accounts = [
         {'client_id': acc[0], 'api_key': acc[1], 'skus': list(acc[2])}
         for acc in accounts_tuple
@@ -65,16 +81,21 @@ def fetch_stocks(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], ...]) -
                 if not resp.ok:
                     logging.warning("Ozon analytics/stocks failed %s: %s", client_id, resp.status_code)
                     continue
-                rj = resp.json()
-                for row in rj.get("items", []):
-                    qty = int(row.get("available_stock_count", 0) or 0)
-                    wh_name = row.get("warehouse_name") or "Неизвестный кластер"
-                    sku_name = alias_sku(str(row.get("offer_id")))
-                    final_total += qty
-                    final_by_warehouse[wh_name] += qty
-                    final_by_sku[sku_name] += qty
-                    sku_wh = final_by_sku_warehouses.setdefault(sku_name, defaultdict(int))
-                    sku_wh[wh_name] += qty
+                
+                try:
+                    rj = OzonStockResponse.model_validate(resp.json())
+                    for row in rj.items:
+                        qty = row.available_stock_count
+                        wh_name = row.warehouse_name or "Неизвестный кластер"
+                        sku_name = alias_sku(str(row.offer_id))
+                        final_total += qty
+                        final_by_warehouse[wh_name] += qty
+                        final_by_sku[sku_name] += qty
+                        sku_wh = final_by_sku_warehouses.setdefault(sku_name, defaultdict(int))
+                        sku_wh[wh_name] += qty
+                except (ValidationError, json.JSONDecodeError) as exc:
+                    logging.error("Failed to parse Ozon stocks for %s: %s", client_id, exc)
+                    continue
 
         warehouses = sorted(final_by_warehouse.items(), key=lambda x: x[0])
         skus = sort_pairs_by_alias(list(final_by_sku.items()))
@@ -104,17 +125,21 @@ def _fetch_postings(client_id: str, api_key: str, start_iso: str, status: str | 
     }
     if status:
         payload["filter"]["status"] = status
-    # Официально актуальны v2 для FBO
+    # Используем v2 для FBO, как наиболее актуальную версию API
     resp = requests.post(f"{OZON_BASE}/v2/posting/fbo/list", headers=_headers(client_id, api_key), json=payload, timeout=30)
     resp.raise_for_status()
-    rj = resp.json()
-    result = rj.get("result", rj)
-    return result if isinstance(result, list) else []
+    validated_resp = OzonPostingResponse.model_validate(resp.json())
+    return validated_resp.result
 
 
 @cache.memoize(timeout=get_timeout_to_next_half_hour)
 def fetch_today_metrics(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], ...], tz: ZoneInfo) -> dict:
-    """Подсчитывает за сегодня: заказано (по FBO postings)."""
+    """
+    Агрегирует данные о заказах за сегодняшний день по всем аккаунтам Ozon.
+
+    Для каждого аккаунта запрашивает все отправления (postings) с начала
+    сегодняшнего дня по указанной таймзоне и суммирует количество товаров в них.
+    """
     accounts = [
         {'client_id': acc[0], 'api_key': acc[1], 'skus': list(acc[2])}
         for acc in accounts_tuple
@@ -129,9 +154,9 @@ def fetch_today_metrics(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], 
             api_key = account["api_key"]
             # Заказано: все постинги с начала суток (без статуса)
             for p in _fetch_postings(client_id, api_key, start):
-                for pr in p.get("products", []):
-                    qty = int(pr.get("quantity", 0) or 0)
-                    sku_name = alias_sku(str(pr.get("offer_id")))
+                for pr in p.products:
+                    qty = pr.quantity
+                    sku_name = alias_sku(str(pr.offer_id))
                     ordered_by_sku[sku_name] += qty
                     ordered_total += qty
         
@@ -141,7 +166,7 @@ def fetch_today_metrics(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], 
             "ordered_skus": sort_pairs_by_alias(list(ordered_by_sku.items())),
             "purchased_skus": [], # Больше не запрашиваем
         }
-    except Exception as exc:
+    except (ValidationError, Exception) as exc:
         logging.exception("Ozon fetch_today_metrics failed: %s", exc)
         raise
 
