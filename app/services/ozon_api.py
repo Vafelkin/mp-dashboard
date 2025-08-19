@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 from collections import defaultdict
 import logging
 import requests
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from pydantic import ValidationError
 import json
 
@@ -37,7 +37,7 @@ def _make_hashable(accounts: list[dict]) -> Tuple[Tuple[str, str, Tuple[str, ...
         for acc in sorted(accounts, key=lambda x: x['client_id'])
     )
 
-@cache.memoize(timeout=get_timeout_to_next_half_hour)
+@cache.memoize(timeout=get_timeout_to_next_half_hour())
 def fetch_stocks(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], ...]) -> dict:
     """
     Агрегирует данные об остатках FBO по всем аккаунтам Ozon.
@@ -132,7 +132,7 @@ def _fetch_postings(client_id: str, api_key: str, start_iso: str, status: str | 
     return validated_resp.result
 
 
-@cache.memoize(timeout=get_timeout_to_next_half_hour)
+@cache.memoize(timeout=get_timeout_to_next_half_hour())
 def fetch_today_metrics(accounts_tuple: Tuple[Tuple[str, str, Tuple[str, ...]], ...], tz: ZoneInfo) -> dict:
     """
     Агрегирует данные о заказах за сегодняшний день по всем аккаунтам Ozon.

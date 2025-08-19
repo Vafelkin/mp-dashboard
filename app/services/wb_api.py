@@ -21,7 +21,7 @@ def _headers(token: str) -> dict:
     return {"Authorization": token}
 
 
-@cache.memoize(timeout=get_timeout_to_next_half_hour)
+@cache.memoize(timeout=get_timeout_to_next_half_hour())
 def fetch_stocks(token: str) -> dict:
     """
     Загружает и агрегирует данные об остатках на складах Wildberries.
@@ -124,7 +124,7 @@ def _fetch_and_deduplicate_items(url: str, token: str, date_from: str, tz: ZoneI
     return dedup_items
 
 
-@cache.memoize(timeout=get_timeout_to_next_half_hour)
+@cache.memoize(timeout=get_timeout_to_next_half_hour())
 def fetch_today_metrics(token: str, tz: ZoneInfo) -> dict:
     """
     Загружает и агрегирует данные о заказах и продажах за сегодняшний день по московскому времени.

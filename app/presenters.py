@@ -41,6 +41,7 @@ def prepare_dashboard_context(wb_data: dict, ozon_data: dict, now: Any) -> dict:
         stocks_wb_context = {"error": True}
         wb_today_context = {"error": True}
         wb_ordered_skus_details = {}
+        wb_purchased_skus_details = {}
         wb_purchased_skus_lines: list[str] = []
     else:
         wb_stocks = wb_data.get("stocks", {})
