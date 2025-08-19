@@ -86,7 +86,7 @@
 <div class="row g-4">
   <!-- Левая колонка: Wildberries -->
   <div class="col-12 col-lg-6">
-    <div class="text-center mb-2"><h5 class="mb-0">Wildberries</h5></div>
+    <div class="text-center mb-2"><h5 class="mb-0 fw-bold">Wildberries</h5></div>
     <div class="vstack gap-3">
       {{ render_stocks_card("Остатки на складах", stocks_wb) }}
       {{ render_card("Заказано сегодня", wb_today.ordered, wb_ordered_skus_details, 'wb-ordered') }}
@@ -96,7 +96,7 @@
 
   <!-- Правая колонка: Ozon -->
   <div class="col-12 col-lg-6">
-    <div class="text-center mb-2"><h5 class="mb-0">Ozon</h5></div>
+    <div class="text-center mb-2"><h5 class="mb-0 fw-bold">Ozon</h5></div>
     <div class="vstack gap-3">
       {{ render_stocks_card("Остатки на складах", stocks_ozon) }}
       {{ render_card("Заказано сегодня", ozon_today.ordered, ozon_ordered_skus_details, 'ozon-ordered') }}
